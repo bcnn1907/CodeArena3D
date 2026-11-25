@@ -2371,6 +2371,239 @@
             sim.loadScenario('combinedArms');
             requestAnimationFrame((t) => sim.animate(t));
         };
+        class TacticalAudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.muted = false;
+  }
+
+  init() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  createNoiseBuffer(duration = 0.5) {
+    const bufferSize = this.ctx.sampleRate * duration;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+  }
+
+  playRifleShot(isSniper = false) {
+    if (this.muted) return;
+    this.init();
+    const now = this.ctx.currentTime;
+
+    // 1. Yüksek basınçlı namlu patlaması (White Noise + Bandpass/Lowpass)
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.createNoiseBuffer(isSniper ? 0.65 : 0.28);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(isSniper ? 850 : 1400, now);
+    filter.frequency.exponentialRampToValueAtTime(180, now + (isSniper ? 0.55 : 0.22));
+    filter.Q.value = 1.2;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(isSniper ? 0.55 : 0.32, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + (isSniper ? 0.6 : 0.25));
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(now);
+
+    // 2. Gövde vuruşu & mekanik sürgü klik sesi
+    const punch = this.ctx.createOscillator();
+    const punchGain = this.ctx.createGain();
+    punch.type = 'triangle';
+    punch.frequency.setValueAtTime(isSniper ? 160 : 240, now);
+    punch.frequency.exponentialRampToValueAtTime(35, now + 0.12);
+
+    punchGain.gain.setValueAtTime(0.4, now);
+    punchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+    punch.connect(punchGain);
+    punchGain.connect(this.ctx.destination);
+    punch.start(now);
+    punch.stop(now + 0.14);
+  }
+
+  playRicochet() {
+    if (this.muted) return;
+    this.init();
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    const startFreq = 1800 + Math.random() * 1400;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(420, now + 0.18);
+
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }
+
+  playExplosion() {
+    if (this.muted) return;
+    this.init();
+    const now = this.ctx.currentTime;
+
+    // Derin sub-bass şok dalgası
+    const sub = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(110, now);
+    sub.frequency.exponentialRampToValueAtTime(22, now + 0.75);
+
+    subGain.gain.setValueAtTime(0.7, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+
+    sub.connect(subGain);
+    subGain.connect(this.ctx.destination);
+    sub.start(now);
+    sub.stop(now + 0.82);
+
+    // Şarapnel & moloz gürültüsü
+    const debris = this.ctx.createBufferSource();
+    debris.buffer = this.createNoiseBuffer(0.95);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, now);
+    lp.frequency.exponentialRampToValueAtTime(95, now + 0.9);
+
+    const dGain = this.ctx.createGain();
+    dGain.gain.setValueAtTime(0.5, now);
+    dGain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+
+    debris.connect(lp);
+    lp.connect(dGain);
+    dGain.connect(this.ctx.destination);
+    debris.start(now);
+  }
+}
+
+const sfx = new TacticalAudioEngine();
+        function createProceduralTexture(type) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  if (type === 'sandstone') {
+    ctx.fillStyle = '#c2a67d';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 4500; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(90,70,45,0.14)' : 'rgba(255,245,220,0.12)';
+      ctx.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+    }
+    ctx.strokeStyle = 'rgba(75,58,38,0.25)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < 256; y += 64) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
+    }
+  } else if (type === 'crate') {
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = '#4a2e12';
+    ctx.lineWidth = 14;
+    ctx.strokeRect(7, 7, 242, 242);
+    ctx.beginPath();
+    ctx.moveTo(14, 14); ctx.lineTo(242, 242);
+    ctx.moveTo(242, 14); ctx.lineTo(14, 242);
+    ctx.stroke();
+  } else if (type === 'container') {
+    ctx.fillStyle = '#2c4c63';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let x = 0; x < 256; x += 16) {
+      ctx.fillStyle = x % 32 === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.22)';
+      ctx.fillRect(x, 0, 8, 256);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function buildCS2TacticalMap(scene, obstacles) {
+  // Güneş ışığı ve atmosferik sis (Dust 2 sıcak gün ışığı)
+  scene.background = new THREE.Color(0xd8c39e);
+  scene.fog = new THREE.FogExp2(0xd8c39e, 0.0085);
+
+  const sunLight = new THREE.DirectionalLight(0xfff1d6, 1.8);
+  sunLight.position.set(45, 75, 35);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(2048, 2048);
+  scene.add(sunLight);
+
+  const sandTex = createProceduralTexture('sandstone');
+  sandTex.repeat.set(14, 14);
+  const crateTex = createProceduralTexture('crate');
+  const containerTex = createProceduralTexture('container');
+
+  // Ana Kumtaşı / Asfalt Zemin
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(110, 110),
+    new THREE.MeshStandardMaterial({ map: sandTex, roughness: 0.92, metalness: 0.05 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // A ve B Bomba Bölgesi Zemin İşaretleri
+  const addSiteMarker = (x, z, color) => {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(4.2, 4.7, 32),
+      new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.03, z);
+    scene.add(ring);
+  };
+  addSiteMarker(-26, -22, 0xd93829); // A Site
+  addSiteMarker(26, 22, 0xd93829);   // B Site
+
+  // Siper ve Yapı Ekleme Yardımcısı
+  const addCover = (w, h, d, x, z, material, rotY = 0) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.position.set(x, h / 2, z);
+    mesh.rotation.y = rotY;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    obstacles.push({ mesh, x, z, w, d });
+  };
+
+  const wallMat = new THREE.MeshStandardMaterial({ map: sandTex, roughness: 0.85 });
+  const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.78 });
+  const containerMat = new THREE.MeshStandardMaterial({ map: containerTex, roughness: 0.5, metalness: 0.45 });
+
+  // Orta Koridor (Mid) Kemerli Duvar Blokları
+  addCover(14, 5.5, 2.5, -10, 0, wallMat);
+  addCover(14, 5.5, 2.5, 10, 0, wallMat);
+
+  // Kargo Konteynerleri
+  addCover(11, 4.2, 4.2, -22, 12, containerMat, 0.25);
+  addCover(11, 4.2, 4.2, 22, -12, containerMat, -0.25);
+
+  // Ahşap İkmal Kasaları (A ve B Site Siperleri)
+  addCover(3.2, 3.2, 3.2, -25, -20, crateMat);
+  addCover(2.4, 2.4, 2.4, -22.2, -20, crateMat);
+  addCover(3.2, 3.2, 3.2, 25, 20, crateMat);
+  addCover(2.4, 2.4, 2.4, 22.2, 20, crateMat);
+}
     </script>
 </body>
 </html>
